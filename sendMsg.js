@@ -1,6 +1,6 @@
 var socket = io();
 var p = null;
-while (p === null) {
+while (!p) {
 	p = prompt('Identification:');
 }
 socket.emit(AUTH, { id: p });
@@ -9,12 +9,23 @@ const userList = document.getElementById("names");
 const msgList = document.getElementById("messages");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
+const img = document.getElementById("img");
+const user = document.getElementById("from");
+user.textContent = 'You are user' + p;
+const chattingWith = document.getElementById("to");
 
 var curCommUserId = '';
 var otherUsers = {};//might not be needed
 
 form.addEventListener("submit", (e) => {
 	e.preventDefault();
+
+	if (img.files.length > 0) {
+		for(var file of img.files){
+
+		}
+	}
+
 	if (input.value) {
 		if (curCommUserId == '') {
 			socket.emit(BROADCAST, { msg: input.value, id: p });
@@ -36,14 +47,14 @@ const liClick = (event) => {
 		event.target.classList.add('selected');
 
 		curCommUserId = event.target.textContent.slice(4);//holds id not socketid
+		chattingWith.textContent = 'Chatting with user' + curCommUserId;
 	} else {
 		event.target.classList.remove('selected');
 		curCommUserId = '';
+		chattingWith.textContent = 'BROADCAST';
 	}
 
 	socket.emit(RETRIEVE, [p, curCommUserId]);
-
-	//TODO download all msgs for the selected channel
 };
 
 socket.on(AUTH, (others) => {
