@@ -6,3 +6,5 @@ consts.UNICAST = 'unmsg';
 consts.ADDU = 'adduser';
 consts.REMOVEU = 'remuser';
 consts.RETRIEVE = 'retrieve';
+consts.BR_IMG = 'brimg';
+consts.UNI_IMG = 'uniimg';

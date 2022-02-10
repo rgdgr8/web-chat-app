@@ -8,11 +8,13 @@ const express = require('express');
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
+var SocketIOFileUpload = require('socketio-file-upload')
 const sio = require('socket.io');
 const Server = sio.Server;
 const mongoose = require('mongoose');
 
 app.use(cors());
+app.use(SocketIOFileUpload.router);
 app.use(parser.json());
 app.use(express.static('./public'));
 
@@ -27,7 +29,25 @@ mongoose.connect(process.env.CONNECT_RGDGR, (err) => {
 
 var users = {};
 const Msg = require('./Msg');
+const Image = require('./Image');
+const e = require('cors');
+
 Msg.deleteMany({}).exec();
+Image.deleteMany({}).exec();
+
+function cleanupUploads() {
+	const path = require('path');
+	const directory = 'uploads';
+	fs.readdir(directory, (err, files) => {
+		if (err) throw err;
+		for (const file of files) {
+			fs.unlink(path.join(directory, file), err => {
+				if (err) throw err;
+			});
+		}
+	});
+};
+cleanupUploads();
 
 const io = new Server(server);
 io.on('connection', (socket) => {
@@ -64,6 +84,45 @@ io.on('connection', (socket) => {
 		});*/
 	});
 
+	var uploader = new SocketIOFileUpload();
+	uploader.dir = "./uploads";
+	uploader.listen(socket);
+
+	uploader.on("saved", function (event) {//called for each image uploaded
+		console.log('upload saved');
+		console.log(event.file);
+
+		var a = new Image();
+		a.img.data = fs.readFileSync('./uploads/' + event.file.name);
+		a.img.contentType = 'image/' + event.file.name.slice(-3);//change when needed
+		a.img.from = event.file.meta.from;
+		a.img.to = event.file.meta.to;
+
+		if (event.file.meta.to == '') {
+			a.save().then((res) => {
+				const data = res.img;
+				data.createdAt = res.createdAt;
+
+				io.emit(constants.BR_IMG, data);
+
+				cleanupUploads();
+			}).catch((err) => console.log(err));
+		} else {
+			a.save().then((res) => {
+				const data = res.img;
+				data.createdAt = res.createdAt;
+
+				socket.to(users[event.file.meta.to]).emit(constants.UNI_IMG, data);
+				socket.emit(constants.UNI_IMG, data);
+
+				cleanupUploads();
+			}).catch((err) => { console.log(err); });
+		}
+	});
+	uploader.on("error", function (event) {
+		console.log("Error from uploader", event);
+	});
+
 	socket.on(constants.BROADCAST, (data) => {
 		const msg = new Msg({
 			from: data.id,
@@ -94,6 +153,9 @@ io.on('connection', (socket) => {
 	})
 
 	socket.on(constants.RETRIEVE, (users) => {
+		console.log('in retrieve');
+		console.log(users);
+
 		try {
 			if (users[1] != '') {
 				Msg.find({
@@ -111,19 +173,84 @@ io.on('connection', (socket) => {
 							]
 						}
 					]
-				}, (err, data) => {
+				}, (err, tdata) => {
 					if (err) {
 						console.log(err);
 					} else {
-						socket.emit(constants.RETRIEVE, data);
+						Image.find({
+							$or: [
+								{
+									$and: [
+										{ "img.from": users[0] },
+										{ "img.to": users[1] }
+									]
+								},
+								{
+									$and: [
+										{ "img.from": users[1] },
+										{ "img.to": users[0] }
+									]
+								}
+							]
+						}, (err, idata) => {
+							if (err) {
+								console.log(err);
+							} else {
+								var res = [];
+
+								for (var t of tdata) {
+									console.log(t._doc);
+									if (t._doc) {
+										console.log('has doc');
+										res.push(t._doc);
+									} else {
+										console.log('no doc');
+										res.push(t);
+									}
+								}
+
+								for (var d of idata) {
+									const x = d.img;
+									x.createdAt = d.createdAt;
+									res.push(x);
+								}
+
+								socket.emit(constants.RETRIEVE, res);
+							}
+						});
 					}
 				});
 			} else {
-				Msg.find({ to: '' }, (err, data) => {
+				Msg.find({ to: '' }, (err, tdata) => {
 					if (err) {
 						console.log(err);
 					} else {
-						socket.emit(constants.RETRIEVE, data);
+						Image.find({ "img.to": '' }, (err, idata) => {
+							if (err) {
+								console.log(err);
+							} else {
+								var res = [];
+
+								for (var t of tdata) {
+									console.log(t._doc);
+									if (t._doc) {
+										console.log('has doc');
+										res.push(t._doc);
+									} else {
+										console.log('no doc');
+										res.push(t);
+									}
+								}
+
+								for (var d of idata) {
+									const x = d.img;
+									x.createdAt = d.createdAt;
+									res.push(x);
+								}
+
+								socket.emit(constants.RETRIEVE, res);
+							}
+						});
 					}
 				});
 			}
